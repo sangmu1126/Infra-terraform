@@ -94,10 +94,11 @@ resource "aws_security_group" "worker_sg" {
 
 # 4. Instances
 resource "aws_instance" "controller" {
-  ami           = data.aws_ami.al2023.id
-  instance_type = "t3.micro"
-  key_name      = aws_key_pair.kp.key_name
-  subnet_id     = data.aws_subnets.default.ids[0] # Explicitly use the first subnet
+  ami                         = data.aws_ami.al2023.id
+  instance_type               = "t3.micro"
+  key_name                    = aws_key_pair.kp.key_name
+  subnet_id                   = data.aws_subnets.default.ids[0]
+  associate_public_ip_address = true # Required for SSH
 
   vpc_security_group_ids = [aws_security_group.controller_sg.id]
 
@@ -107,10 +108,11 @@ resource "aws_instance" "controller" {
 }
 
 resource "aws_instance" "worker" {
-  ami           = data.aws_ami.al2023.id
-  instance_type = "t3.micro"
-  key_name      = aws_key_pair.kp.key_name
-  subnet_id     = data.aws_subnets.default.ids[0] # Explicitly use the first subnet
+  ami                         = data.aws_ami.al2023.id
+  instance_type               = "t3.micro"
+  key_name                    = aws_key_pair.kp.key_name
+  subnet_id                   = data.aws_subnets.default.ids[0]
+  associate_public_ip_address = true # Required for SSH
 
   vpc_security_group_ids = [aws_security_group.worker_sg.id]
 
