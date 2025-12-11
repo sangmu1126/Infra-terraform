@@ -9,6 +9,7 @@ terraform {
 
 provider "aws" {
   region = "ap-northeast-2"
+  profile = "default"
 }
 
 variable "project_name" {
@@ -49,6 +50,17 @@ resource "aws_sqs_queue" "task_queue" {
   visibility_timeout_seconds = 300 # 5 minutes (Matches Worker Timeout)
   message_retention_seconds  = 345600 # 4 days
   receive_wait_time_seconds  = 20     # Long Polling
+
+  # Resilience: Dead Letter Queue (DLQ) Configuration
+  redrive_policy = jsonencode({
+    deadLetterTargetArn = aws_sqs_queue.dlq_queue.arn
+    maxReceiveCount     = 3 # Retry 3 times before moving to DLQ
+  })
+}
+
+# 3.1 Dead Letter Queue (DLQ)
+resource "aws_sqs_queue" "dlq_queue" {
+  name = "${var.project_name}-dlq"
 }
 
 # 4. Outputs (For .env)
