@@ -38,9 +38,9 @@ resource "aws_key_pair" "kp" {
 }
 
 resource "local_file" "ssh_key" {
-  filename        = "${path.module}/faas-key.pem"
+  filename        = "${path.module}/faas-key-v2.pem"
   content         = tls_private_key.pk.private_key_pem
-  file_permission = "0400"
+  file_permission = "0600"
 }
 
 # 3. Security Groups
@@ -92,6 +92,14 @@ resource "aws_security_group" "worker_sg" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
+  ingress {
+    description = "Prometheus Metrics"
+    from_port   = 8000
+    to_port     = 8000
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
   egress {
     from_port   = 0
     to_port     = 0
@@ -113,6 +121,19 @@ resource "aws_instance" "controller" {
   tags = {
     Name = "${var.project_name}-controller"
   }
+
+  user_data = templatefile("${path.module}/user_data_controller.sh", {
+    aws_region  = var.aws_region
+    sqs_url     = aws_sqs_queue.task_queue.url
+    bucket_name = aws_s3_bucket.code_bucket.bucket
+    table_name  = aws_dynamodb_table.metadata_table.name
+    redis_host     = aws_elasticache_cluster.redis.cache_nodes[0].address
+    aws_access_key = var.aws_access_key
+    aws_secret_key = var.aws_secret_key
+  })
+
+  # Ensure Redis is ready before launching (soft dependency)
+  depends_on = [aws_elasticache_cluster.redis]
 }
 
 resource "aws_instance" "worker" {
@@ -127,4 +148,16 @@ resource "aws_instance" "worker" {
   tags = {
     Name = "${var.project_name}-worker"
   }
+
+  user_data = templatefile("${path.module}/user_data_worker.sh", {
+    aws_region     = var.aws_region
+    sqs_url        = aws_sqs_queue.task_queue.url
+    bucket_name    = aws_s3_bucket.code_bucket.bucket
+    table_name     = aws_dynamodb_table.metadata_table.name
+    redis_host     = aws_elasticache_cluster.redis.cache_nodes[0].address
+    aws_access_key = var.aws_access_key
+    aws_secret_key = var.aws_secret_key
+  })
+
+  depends_on = [aws_elasticache_cluster.redis]
 }

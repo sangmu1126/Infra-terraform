@@ -24,6 +24,22 @@ variable "project_name" {
   default = "faas-sooming"
 }
 
+variable "aws_region" {
+  default = "ap-northeast-2"
+}
+
+variable "aws_access_key" {
+  description = "AWS Access Key ID"
+  type        = string
+  sensitive   = true
+}
+
+variable "aws_secret_key" {
+  description = "AWS Secret Access Key"
+  type        = string
+  sensitive   = true
+}
+
 # 1. S3 Bucket for Code Storage
 resource "aws_s3_bucket" "code_bucket" {
   bucket_prefix = "${var.project_name}-code-"

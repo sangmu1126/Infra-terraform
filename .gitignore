@@ -5,3 +5,7 @@
 
 # Keys
 *.pem
+
+# Secrets
+terraform.tfvars
+.env
