@@ -5,11 +5,11 @@ terraform {
       version = "~> 5.0"
     }
     tls = {
-      source = "hashicorp/tls"
+      source  = "hashicorp/tls"
       version = "~> 4.0"
     }
     local = {
-      source = "hashicorp/local"
+      source  = "hashicorp/local"
       version = "~> 2.0"
     }
   }
@@ -72,7 +72,7 @@ resource "aws_dynamodb_table" "metadata_table" {
 # 3. SQS Queue for Tasks
 resource "aws_sqs_queue" "task_queue" {
   name                       = "${var.project_name}-queue"
-  visibility_timeout_seconds = 300 # 5 minutes (Matches Worker Timeout)
+  visibility_timeout_seconds = 300    # 5 minutes (Matches Worker Timeout)
   message_retention_seconds  = 345600 # 4 days
   receive_wait_time_seconds  = 20     # Long Polling
 
