@@ -1,5 +1,6 @@
 output "controller_public_ip" {
-  value = aws_instance.controller.public_ip
+  value       = aws_eip.controller_eip.public_ip
+  description = "Static Elastic IP for Controller"
 }
 
 # NOTE: Worker IPs are dynamic (managed by ASG)
@@ -7,7 +8,7 @@ output "controller_public_ip" {
 # Or check AWS Console -> Auto Scaling Groups
 
 output "ssh_connection_string_controller" {
-  value = "ssh -i faas-key-v2.pem ec2-user@${aws_instance.controller.public_ip}"
+  value = "ssh -i faas-key-v2.pem ec2-user@${aws_eip.controller_eip.public_ip}"
 }
 
 output "redis_endpoint" {

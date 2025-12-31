@@ -167,3 +167,14 @@ resource "aws_instance" "controller" {
 #   ...
 # }
 
+# Elastic IP for Controller (Static IP)
+resource "aws_eip" "controller_eip" {
+  instance = aws_instance.controller.id
+  domain   = "vpc"
+
+  tags = {
+    Name = "${var.project_name}-controller-eip"
+  }
+
+  depends_on = [aws_instance.controller]
+}
