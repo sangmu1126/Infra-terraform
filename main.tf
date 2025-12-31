@@ -69,6 +69,24 @@ resource "aws_dynamodb_table" "metadata_table" {
   }
 }
 
+# 2.1 DynamoDB for Execution Logs (NEW)
+resource "aws_dynamodb_table" "logs_table" {
+  name         = "${var.project_name}-logs"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "functionId"
+  range_key    = "timestamp"
+
+  attribute {
+    name = "functionId"
+    type = "S"
+  }
+
+  attribute {
+    name = "timestamp"
+    type = "S"
+  }
+}
+
 # 3. SQS Queue for Tasks
 resource "aws_sqs_queue" "task_queue" {
   name                       = "${var.project_name}-queue"
@@ -95,6 +113,10 @@ output "s3_bucket_name" {
 
 output "dynamodb_table_name" {
   value = aws_dynamodb_table.metadata_table.name
+}
+
+output "dynamodb_logs_table_name" {
+  value = aws_dynamodb_table.logs_table.name
 }
 
 output "sqs_queue_url" {
