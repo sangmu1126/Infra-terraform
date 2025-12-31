@@ -29,6 +29,7 @@ AWS_REGION=${aws_region}
 SQS_URL=${sqs_url}
 BUCKET_NAME=${bucket_name}
 TABLE_NAME=${table_name}
+LOGS_TABLE_NAME=${logs_table_name}
 REDIS_HOST=${redis_host}
 REDIS_PORT=6379
 INFRA_API_KEY=test-api-key
