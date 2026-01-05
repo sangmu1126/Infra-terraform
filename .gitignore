@@ -1,14 +1,21 @@
+# Terraform
 .terraform/
 *.tfstate
-*.tfstate.backup
+*.tfstate.*
+*.tfplan
 .terraform.lock.hcl
 
-# Keys
-*.pem
-
-# Secrets
-terraform.tfvars
+# Secrets & Keys
 .env
+*.pem
+*.key
+*.tfvars
+terraform.tfvars.json
+secrets/
 
-# Output
-outputs.json
+# Backup & Temp
+*.backup
+*.bak
+*~
+*.tmp
+*.log
