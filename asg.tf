@@ -61,9 +61,27 @@ resource "aws_iam_instance_profile" "worker_profile" {
 }
 
 # 2. Launch Template for Workers
+# 2. Launch Template for Worker
+data "aws_instances" "controller" {
+  instance_tags = {
+    Name = "${var.project_name}-controller-asg"
+  }
+  instance_state_names = ["running"]
+}
+
+data "aws_ami" "custom_worker" {
+  most_recent = true
+  owners      = ["self"]
+
+  filter {
+    name   = "name"
+    values = ["faas-worker"]
+  }
+}
+
 resource "aws_launch_template" "worker" {
   name_prefix   = "${var.project_name}-worker-"
-  image_id      = data.aws_ami.al2023.id
+  image_id      = data.aws_ami.custom_worker.id
   instance_type = "t3.micro"
   key_name      = aws_key_pair.kp.key_name
 
@@ -72,6 +90,15 @@ resource "aws_launch_template" "worker" {
   }
 
   vpc_security_group_ids = [aws_security_group.worker_sg.id]
+
+  block_device_mappings {
+    device_name = "/dev/xvda"
+    ebs {
+      volume_size           = 8
+      volume_type           = "gp3"
+      delete_on_termination = true
+    }
+  }
 
   user_data = base64encode(templatefile("${path.module}/user_data_worker.sh", {
     aws_region            = var.aws_region
@@ -82,7 +109,7 @@ resource "aws_launch_template" "worker" {
     warm_pool_python_size = var.warm_pool_python_size
     aws_access_key        = var.aws_access_key
     aws_secret_key        = var.aws_secret_key
-    controller_eip        = aws_eip.controller_asg_eip.public_ip
+    controller_eip        = length(data.aws_instances.controller.private_ips) > 0 ? data.aws_instances.controller.private_ips[0] : aws_eip.controller_asg_eip.public_ip
   }))
 
   tag_specifications {
@@ -101,7 +128,6 @@ resource "aws_launch_template" "worker" {
 resource "aws_autoscaling_group" "worker" {
   name                = "${var.project_name}-worker-asg"
   vpc_zone_identifier = [aws_subnet.private_a.id, aws_subnet.private_b.id]  # Private Subnets
-
   min_size         = 1
   max_size         = 10
   desired_capacity = 1
