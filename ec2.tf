@@ -1,3 +1,6 @@
+# EC2 Configuration
+# AMI, Key Pair, and Security Groups
+
 # 1. Get Latest Amazon Linux 2023 AMI
 data "aws_ami" "al2023" {
   most_recent = true
@@ -11,18 +14,6 @@ data "aws_ami" "al2023" {
   filter {
     name   = "virtualization-type"
     values = ["hvm"]
-  }
-}
-
-# 1.1 Get Default VPC and Subnets
-data "aws_vpc" "default" {
-  default = true
-}
-
-data "aws_subnets" "default" {
-  filter {
-    name   = "vpc-id"
-    values = [data.aws_vpc.default.id]
   }
 }
 
@@ -43,10 +34,11 @@ resource "local_file" "ssh_key" {
   file_permission = "0600"
 }
 
-# 3. Security Groups
+# 3. Security Groups (Updated for Custom VPC)
 resource "aws_security_group" "controller_sg" {
   name        = "faas-controller-sg"
-  description = "Allow SSH and API"
+  description = "Allow SSH, API, and Worker Heartbeats"
+  vpc_id      = aws_vpc.main.id
 
   ingress {
     description = "SSH"
@@ -64,12 +56,13 @@ resource "aws_security_group" "controller_sg" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
+  # Worker Heartbeat from Private Subnet
   ingress {
-    description = "Redis"
-    from_port   = 6379
-    to_port     = 6379
+    description = "Worker Heartbeat"
+    from_port   = 8080
+    to_port     = 8080
     protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
+    cidr_blocks = ["10.0.10.0/24", "10.0.11.0/24"] # Private subnets
   }
 
   egress {
@@ -86,30 +79,32 @@ resource "aws_security_group" "controller_sg" {
 
 resource "aws_security_group" "worker_sg" {
   name        = "faas-worker-sg"
-  description = "Allow SSH only (Worker pulls tasks)"
+  description = "Worker Security Group (Private Subnet)"
+  vpc_id      = aws_vpc.main.id
 
+  # SSH via Bastion or SSM (optional)
   ingress {
-    description = "SSH"
+    description = "SSH from VPC"
     from_port   = 22
     to_port     = 22
     protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
+    cidr_blocks = [aws_vpc.main.cidr_block]
   }
 
   ingress {
-    description = "Prometheus Metrics"
+    description = "Prometheus Metrics from Controller"
     from_port   = 8000
     to_port     = 8000
     protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
+    cidr_blocks = ["10.0.1.0/24", "10.0.2.0/24"] # Public subnets (Controller)
   }
 
   ingress {
-    description = "Health Check API"
+    description = "Health Check API from Controller"
     from_port   = 8001
     to_port     = 8001
     protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
+    cidr_blocks = ["10.0.1.0/24", "10.0.2.0/24"] # Public subnets (Controller)
   }
 
   egress {
@@ -124,57 +119,8 @@ resource "aws_security_group" "worker_sg" {
   }
 }
 
-# 4. Instances
-resource "aws_instance" "controller" {
-  ami                         = data.aws_ami.al2023.id
-  instance_type               = "t3.micro"
-  key_name                    = aws_key_pair.kp.key_name
-  subnet_id                   = data.aws_subnets.default.ids[0]
-  associate_public_ip_address = true # Required for SSH
-
-  vpc_security_group_ids = [aws_security_group.controller_sg.id]
-
-  tags = {
-    Name = "${var.project_name}-controller"
-  }
-
-  user_data = templatefile("${path.module}/user_data_controller.sh", {
-    aws_region     = var.aws_region
-    sqs_url        = aws_sqs_queue.task_queue.url
-    bucket_name    = aws_s3_bucket.code_bucket.bucket
-    table_name     = aws_dynamodb_table.metadata_table.name
-    logs_table_name = aws_dynamodb_table.logs_table.name
-    redis_host     = aws_elasticache_cluster.redis.cache_nodes[0].address
-    aws_access_key = var.aws_access_key
-    aws_secret_key = var.aws_secret_key
-  })
-
-  # Ensure Redis is ready before launching (soft dependency)
-  depends_on = [aws_elasticache_cluster.redis]
-}
-
-# NOTE: Worker instances are now managed by Auto Scaling Group
-# See asg.tf for Launch Template and ASG configuration
-# Keeping this comment for reference of original configuration:
+# NOTE: Controller is now managed by Auto Scaling Group
+# See controller_asg.tf for Launch Template and ASG configuration
 #
-# resource "aws_instance" "worker" {
-#   ami                         = data.aws_ami.al2023.id
-#   instance_type               = "t3.micro"
-#   key_name                    = aws_key_pair.kp.key_name
-#   subnet_id                   = data.aws_subnets.default.ids[0]
-#   associate_public_ip_address = true
-#   vpc_security_group_ids      = [aws_security_group.worker_sg.id]
-#   ...
-# }
-
-# Elastic IP for Controller (Static IP)
-resource "aws_eip" "controller_eip" {
-  instance = aws_instance.controller.id
-  domain   = "vpc"
-
-  tags = {
-    Name = "${var.project_name}-controller-eip"
-  }
-
-  depends_on = [aws_instance.controller]
-}
+# NOTE: Worker instances are managed by Auto Scaling Group
+# See asg.tf for Launch Template and ASG configuration
