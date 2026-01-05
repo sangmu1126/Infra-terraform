@@ -2,7 +2,7 @@
 resource "aws_security_group" "redis_sg" {
   name        = "faas-redis-sg"
   description = "Allow Redis traffic from Controller and Worker"
-  vpc_id      = data.aws_vpc.default.id
+  vpc_id      = aws_vpc.main.id
 
   ingress {
     description     = "Redis from Controller"
@@ -26,12 +26,16 @@ resource "aws_security_group" "redis_sg" {
     protocol    = "-1"
     cidr_blocks = ["0.0.0.0/0"]
   }
+
+  tags = {
+    Name = "${var.project_name}-redis-sg"
+  }
 }
 
-# 2. Subnet Group
+# 2. Subnet Group (using Private Subnets for Redis)
 resource "aws_elasticache_subnet_group" "default" {
   name       = "${var.project_name}-redis-subnet-group"
-  subnet_ids = data.aws_subnets.default.ids
+  subnet_ids = [aws_subnet.private_a.id, aws_subnet.private_b.id]
 }
 
 # 3. Redis Cluster
