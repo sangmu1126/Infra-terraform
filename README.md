@@ -1,12 +1,15 @@
-# ☁️ Infra: FaaS Platform Terraform Modules
+# ☁️ Infra-terraform
 
 <div align="center">
 
-![Terraform](https://img.shields.io/badge/Terraform-1.0%2B-623CE4?style=for-the-badge&logo=terraform)
-![AWS](https://img.shields.io/badge/AWS-EC2%20%7C%20ASG-FF9900?style=for-the-badge&logo=amazonaws)
+![Terraform](https://img.shields.io/badge/Terraform-1.0%2B-623CE4?style=for-the-badge&logo=terraform&logoColor=white)
+![AWS](https://img.shields.io/badge/AWS-VPC%20%7C%20ASG%20%7C%20Lambda-FF9900?style=for-the-badge&logo=amazonaws&logoColor=white)
+![Architecture](https://img.shields.io/badge/Architecture-Serverless-blue?style=for-the-badge&logo=amazonflow&logoColor=white)
 ![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)
 
-**Automated AWS Infrastructure Modules for FaaS Platform**
+**Infrastructure as Code (IaC) for High-Performance FaaS Platform**
+
+*Zero NAT Cost Network • Auto-Healing Controller • Backlog-Based Auto Scaling*
 
 </div>
 
@@ -14,45 +17,86 @@
 
 ## 📖 Introduction
 
-This project defines all necessary AWS resources for the FaaS platform using Terraform (IaC), supporting **One-Click Deployment**.
-It includes the full stack from VPC networking to EC2 instances, Auto Scaling Groups (ASG), Load Balancers, and data stores (DynamoDB, S3).
+This repository defines the complete AWS infrastructure for the FaaS platform using **Terraform**. It deploys a cost-optimized, secure, and auto-scalable environment where:
+- **Workers** run securely in **Private Subnets** without expensive NAT Gateways, using **VPC Endpoints** for AWS services.
+- **Controller** utilizes an **Auto Scaling Group (ASG)** + **Elastic IP** pattern for self-healing high availability.
+- **Auto Scaling** is driven by real-time SQS queue depth interpretation (Backlog per Instance).
 
 ---
 
 ## 🏗️ Architecture
 
+The infrastructure mimics a production-grade environment with strict network isolation.
+
 ```mermaid
 graph TD
-    User -->|Access| EIP[Elastic IP]
-    EIP --> Controller[Controller EC2]
+    User((User/CLI)) -->|HTTP/8080| EIP[Elastic IP]
+    EIP --> ALB[Load Balancer / Controller]
     
-    subgraph "Auto Scaling Group"
-        Worker1[Worker Node 1]
-        Worker2[Worker Node 2]
+    subgraph "VPC (10.0.0.0/16)"
+        subgraph "Public Subnet (10.0.1.x)"
+            Controller[⚡ Controller Node]
+            IGW[Internet Gateway]
+        end
+
+        subgraph "Private Subnet (10.0.10.x)"
+            WorkerGroup[[Worker ASG (1~10)]]
+            Redis[(ElastiCache Redis)]
+            
+            subgraph "VPC Endpoints (No NAT)"
+                VPCE_S3[Gateway: S3]
+                VPCE_DDB[Gateway: DynamoDB]
+                VPCE_SQS[Interface: SQS]
+            end
+        end
     end
     
-    Controller -->|Dispatch| SQS[Task Queue]
-    SQS --> Worker1
-    SQS --> Worker2
+    Controller -- "Enqueues" --> SQS_Q[SQS Queue]
+    SQS_Q -- "Triggers" --> WorkerGroup
     
-    Worker1 -->|Logs| DDB[DynamoDB Logs]
-    Worker1 -->|Result| Redis[Redis Cache]
-    Worker1 -->|Code| S3[S3 Bucket]
+    WorkerGroup -- "Pull Code" --> VPCE_S3
+    WorkerGroup -- "Write Logs" --> VPCE_DDB
+    WorkerGroup -- "Poll Task" --> VPCE_SQS
+    
+    Controller <--> Redis
+    WorkerGroup <--> Redis
 ```
 
-### 📦 Managed Resources
-- **Compute**:
-  - `Controller`: Central node with a static Elastic IP (EIP).
-  - `Worker ASG`: Auto-scaling execution node group based on Launch Templates.
-- **Networking**:
-  - `VPC`: Utilizes default VPC and public subnets for simplicity.
-  - `Security Groups`: Controls traffic for internal communication (Ports 8080, 6379, 22).
-- **Storage & DB**:
-  - `DynamoDB`: Stores metadata (`InfraFunctions`) and execution logs (`InfraExecutionLogs`) with TTL.
-  - `S3`: Stores user code artifacts (`code-bucket`) and execution outputs (`output-bucket`).
-  - `ElastiCache`: Redis for real-time status sharing and Pub/Sub.
-- **Messaging**:
-  - `SQS`: Task queue for asynchronous job processing.
+---
+
+## ⚡ Key Infrastructure Features
+
+### 1. 🛡️ Secure & Cost-Effective Networking
+- **Private Workers**: Worker nodes reside in private subnets with **no direct internet access**.
+- **Zero NAT Gateway**: Instead of paying hourly for NAT (`~$32/mo`), we utilize **VPC Endpoints** (Gateway for S3/DynamoDB is free) to securely access AWS services.
+- **Security Groups**: Granular control allowing only necessary traffic (e.g., Redis port 6379 only from Controller/Worker).
+
+### 2. 🧠 Intelligent Auto Scaling
+- **Metric**: `SQS Backlog Per Instance` (QueueDepth / TotalWorkers).
+- **Policy**: Target Tracking Scaling.
+    - **Target**: **5.0** messages per worker.
+    - If backlog > 5, it scales OUT.
+    - If backlog < 5, it scales IN.
+- **Warm Pools**: Pre-provisioned capacity ensures rapid scaling responsiveness.
+
+### 3. 🏥 Self-Healing Controller
+- **Design**: Controller is a single-instance ASG (Min=1, Max=1).
+- **Recovery**: If the Controller crashes, ASG automatically terminates and replaces it.
+- **State Preservation**: On boot, the user_data script automatically re-attaches the static **Elastic IP**, ensuring the API endpoint remains constant.
+
+---
+
+## 📦 Resource Inventory
+
+| Category | Resource Type | Name Prefix | Description |
+| :--- | :--- | :--- | :--- |
+| **Compute** | `aws_autoscaling_group` | `faas-worker-asg` | Dynamic fleet of execution agents. |
+| | `aws_launch_template` | `faas-controller` | Template for orchestrator node. |
+| **Storage** | `aws_s3_bucket` | `faas-code-...` | Stores user function code ZIPs. |
+| | `aws_dynamodb_table` | `*-table`, `*-logs` | Metadata and Execution Logs (TTL enabled). |
+| **Messaging** | `aws_sqs_queue` | `faas-queue` | Main task distribution queue (VisTimeout: 5m). |
+| **Cache** | `aws_elasticache_cluster` | `faas-redis` | Redis 7.0 for rate limiting & pub/sub. |
+| **Network** | `aws_vpc_endpoint` | `s3`, `dynamodb` | Private connectivity (Gateway Type). |
 
 ---
 
@@ -60,50 +104,47 @@ graph TD
 
 ### Prerequisites
 - Terraform v1.0+
-- AWS CLI configured with credentials (`aws configure`)
+- AWS CLI (`aws configure` verified)
+- SSH Key Pair (`faas-key-v2.pem` generated locally)
 
 ### 1. Initialize
 ```bash
+cd Infra-terraform
 terraform init
 ```
 
-### 2. Configure Variables (Optional)
-Create a `terraform.tfvars` file to override defaults.
-```hcl
-project_name          = "my-faas"
-aws_region            = "ap-northeast-2"
-warm_pool_python_size = 10  # Number of pre-warmed Python containers
+### 2. Plan & Apply
+```bash
+# Preview changes
+terraform plan
+
+# Deploy infrastructure
+terraform apply -auto-approve
 ```
 
-### 3. Apply Resources
+### 3. Verification
+After deployment, Terraform will output connection details:
 ```bash
-terraform apply
-```
+# Connect to Controller
+ssh -i faas-key-v2.pem ec2-user@<controller_eip>
 
-### 4. Check Outputs
-Note the output values after deployment.
-```bash
-# SSH into Controller
-ssh -i faas-key-v2.pem ec2-user@<controller_elastic_ip>
-
-# Redis Endpoint
-<redis_endpoint>
+# Check Autoscaling Status
+aws autoscaling describe-auto-scaling-groups --auto-scaling-group-names faas-worker-asg
 ```
 
 ---
 
-## ⚙️ Key Variables
+## ⚙️ Configuration Variables (`variables.tf`)
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `aws_region` | AWS Region to deploy resources | `ap-northeast-2` |
-| `project_name` | Resource name prefix | `faas` |
-| `warm_pool_python_size` | Number of warm Python containers per worker | `5` |
-| `instance_type` | EC2 Instance Type | `t3.micro` |
+| Variable | Default | Description |
+| :--- | :--- | :--- |
+| `aws_region` | `ap-northeast-2` | Target deployment region. |
+| `project_name` | `faas` | Prefix for all resources. |
+| `warm_pool_python_size` | `5` | Number of pre-warmed containers per worker. |
+| `instance_type` | `t3.micro` | Instance size for cost efficiency. |
 
 ---
 
-## ⚠️ Notes
-- **Cost**: AWS resources will incur costs. Use `terraform destroy` when finished.
-- **Key Pair**: The `faas-key-v2.pem` file is generated locally. Keep it secure.
-- **Cleanup**: Run `terraform destroy` to remove all resources.
+<div align="center">
+  <sub>Infrastructure Optimized for Serverless Performance</sub>
+</div>
