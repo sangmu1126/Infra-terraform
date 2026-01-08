@@ -50,6 +50,13 @@ resource "aws_iam_role_policy" "worker_policy" {
           "dynamodb:UpdateItem"
         ]
         Resource = aws_dynamodb_table.metadata_table.arn
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "ssm:GetParameter"
+        ]
+        Resource = "arn:aws:ssm:*:*:parameter/faas/controller/*"
       }
     ]
   })
@@ -62,12 +69,7 @@ resource "aws_iam_instance_profile" "worker_profile" {
 
 # 2. Launch Template for Workers
 # 2. Launch Template for Worker
-data "aws_instances" "controller" {
-  instance_tags = {
-    Name = "${var.project_name}-controller-asg"
-  }
-  instance_state_names = ["running"]
-}
+
 
 data "aws_ami" "custom_worker" {
   most_recent = true
@@ -109,7 +111,7 @@ resource "aws_launch_template" "worker" {
     warm_pool_python_size = var.warm_pool_python_size
     aws_access_key        = var.aws_access_key
     aws_secret_key        = var.aws_secret_key
-    controller_eip        = length(data.aws_instances.controller.private_ips) > 0 ? data.aws_instances.controller.private_ips[0] : aws_eip.controller_asg_eip.public_ip
+
   }))
 
   tag_specifications {
