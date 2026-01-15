@@ -77,7 +77,7 @@ data "aws_ami" "custom_worker" {
 
   filter {
     name   = "name"
-    values = ["faas-worker"]
+    values = ["faas-worker*"]  # Matches faas-worker, faas-worker-fixed-*, etc.
   }
 }
 
